@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Privacy guard: the page may not open any network connection (fetch, XHR, WebSocket, beacons) or submit forms.
+       Scripts and styles only load from this folder. Web images in Markdown can still display. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' file: data: blob:; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob: https: http:; font-src 'self' file: data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'self' file:; frame-src 'self' about: blob:">
+
+  <title>JSON Formatter</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='700' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-view="json">
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">{ }</span>
+      <h1>Kishan's Dev Toolkit</h1>
+      <span class="tag">Runs locally · nothing is uploaded</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Tools">
+      <button type="button" role="tab" data-view="json" class="active" aria-selected="true">JSON Formatter</button>
+      <button type="button" role="tab" data-view="compare" aria-selected="false">JSON Compare</button>
+      <button type="button" role="tab" data-view="md" aria-selected="false">Markdown to PDF</button>
+    </nav>
+    <button id="themeBtn" type="button" title="Toggle light / dark theme">Theme</button>
+  </header>
+
+  <!-- ============ JSON Formatter ============ -->
+  <div class="app-view" id="jsonView">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Output style">
+        <button id="prettyBtn" type="button" class="active">Format</button>
+        <button id="minifyBtn" type="button">Minify</button>
+      </div>
+      <label class="field">Indent
+        <select id="indentSel">
+          <option value="2">2 spaces</option>
+          <option value="4">4 spaces</option>
+          <option value="tab">Tab</option>
+        </select>
+      </label>
+      <label class="check" title="Repair brackets, commas, quotes, comments and similar mistakes">
+        <input type="checkbox" id="autoFix" checked> Auto-fix
+      </label>
+      <label class="check"><input type="checkbox" id="sortKeys"> Sort keys</label>
+      <span class="hint">Ctrl+Enter format · Ctrl+F search · Ctrl+S download · Ctrl+Shift+F full screen</span>
+    </div>
+
+    <main class="workspace">
+      <section class="panel" id="inputPanel">
+        <div class="panel-head">
+          <h2>Input</h2>
+          <div class="actions">
+            <button id="openBtn" type="button">Open file</button>
+            <input type="file" id="fileInput" accept=".json,.txt,.log,application/json,text/plain" hidden>
+            <button id="sampleBtn" type="button">Sample</button>
+            <button id="clearBtn" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="editor">
+          <pre class="gutter" id="inGutter" aria-hidden="true">1</pre>
+          <textarea id="input" spellcheck="false" wrap="off" autocomplete="off"
+            placeholder="Paste JSON here, or drop a .json file…"></textarea>
+        </div>
+        <div class="panel-foot" id="inStatus">Ln 1, Col 1</div>
+        <div class="drop-overlay">Drop the file to load it</div>
+      </section>
+
+      <section class="panel" id="outputPanel">
+        <div class="panel-head">
+          <div class="seg small" id="viewSeg" role="group" aria-label="View">
+            <button type="button" data-view="code" class="active">Code</button>
+            <button type="button" data-view="tree">Tree</button>
+            <button type="button" data-view="table">Table</button>
+            <button type="button" data-view="graph">Graph</button>
+            <button type="button" data-view="convert">Convert</button>
+          </div>
+          <div class="actions">
+            <span class="group">
+              <button id="zoomOut" type="button" title="Smaller text">A−</button>
+              <button id="zoomIn" type="button" title="Larger text">A+</button>
+            </span>
+            <button id="copyBtn" type="button">Copy</button>
+            <button id="downloadBtn" type="button" class="primary">Download</button>
+            <button id="fsBtn" type="button">Full screen</button>
+          </div>
+        </div>
+        <div class="tools-bar">
+          <div class="tool-field search-field">
+            <input type="search" id="searchInput" placeholder="Search output (Ctrl+F)" spellcheck="false" autocomplete="off">
+            <span id="searchCount" class="count"></span>
+            <button id="searchPrev" type="button" title="Previous match (Shift+Enter)" aria-label="Previous match">↑</button>
+            <button id="searchNext" type="button" title="Next match (Enter)" aria-label="Next match">↓</button>
+          </div>
+          <div class="tool-field query-field">
+            <input type="text" id="queryInput" placeholder="JSONPath, e.g. $.items[?(@.price &gt; 10)].name" spellcheck="false" autocomplete="off">
+            <select id="queryMode" title="Show matching values or their paths">
+              <option value="values">Values</option>
+              <option value="paths">Paths</option>
+            </select>
+            <button id="queryRun" type="button">Run</button>
+            <button id="queryClear" type="button">Clear</button>
+            <span id="queryStatus" class="count"></span>
+          </div>
+        </div>
+        <div class="tools-bar view-bar" data-for-view="tree" hidden>
+          <button id="expandBtn" type="button">Expand all</button>
+          <button id="collapseBtn" type="button">Collapse all</button>
+          <span class="muted">Click a node to see its path · double-click to copy it</span>
+        </div>
+        <div class="tools-bar view-bar" data-for-view="table" hidden>
+          <label class="field">Rows from <select id="tableSource"></select></label>
+          <span id="tableInfo" class="muted"></span>
+        </div>
+        <div class="tools-bar view-bar" data-for-view="graph" hidden>
+          <button id="graphFit" type="button">Fit</button>
+          <button id="graphZoomIn" type="button" aria-label="Zoom in">+</button>
+          <button id="graphZoomOut" type="button" aria-label="Zoom out">−</button>
+          <span id="graphInfo" class="muted"></span>
+        </div>
+        <div class="tools-bar view-bar" data-for-view="convert" hidden>
+          <label class="field">Convert to
+            <select id="convertFormat">
+              <option value="yaml">YAML</option>
+              <option value="csv">CSV</option>
+              <option value="xml">XML</option>
+              <option value="typescript">TypeScript interfaces</option>
+            </select>
+          </label>
+          <span id="convertInfo" class="muted"></span>
+        </div>
+        <div class="notice" id="notice" hidden></div>
+        <div class="viewer">
+          <div class="code-view" id="codeView" hidden>
+            <pre class="gutter" id="outGutter" aria-hidden="true"></pre>
+            <pre class="code" id="codeOut"></pre>
+          </div>
+          <div class="tree-view" id="treeView" hidden></div>
+          <div class="table-view" id="tableView" hidden></div>
+          <div class="graph-view" id="graphView" hidden></div>
+          <div class="convert-view" id="convertView" hidden><pre class="code" id="convertOut"></pre></div>
+          <div class="empty" id="emptyState">
+            <div>
+              <p>Formatted JSON appears here.</p>
+              <p class="muted">Paste JSON on the left, open a file, or load the sample.</p>
+            </div>
+          </div>
+        </div>
+        <div class="panel-foot" id="outStatus"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ JSON Compare ============ -->
+  <div class="app-view" id="compareView" hidden>
+    <div class="toolbar">
+      <button id="cmpSample" type="button">Sample</button>
+      <button id="cmpSwap" type="button">Swap sides</button>
+      <label class="check"><input type="checkbox" id="cmpSortKeys" checked> Ignore key order</label>
+      <span class="hint">Both sides are auto-fixed and compared as you type</span>
+    </div>
+    <main class="compare-layout">
+      <section class="panel" id="cmpLeftPanel">
+        <div class="panel-head">
+          <h2>Original</h2>
+          <div class="actions">
+            <button id="cmpLeftOpen" type="button">Open file</button>
+            <input type="file" id="cmpLeftFile" accept=".json,.txt,application/json,text/plain" hidden>
+            <button id="cmpLeftClear" type="button">Clear</button>
+          </div>
+        </div>
+        <textarea id="cmpLeft" class="cmp-input" spellcheck="false" wrap="off" placeholder="Paste the original JSON…"></textarea>
+        <div class="panel-foot" id="cmpLeftStatus"></div>
+        <div class="drop-overlay">Drop the file to load it</div>
+      </section>
+      <section class="panel" id="cmpRightPanel">
+        <div class="panel-head">
+          <h2>Modified</h2>
+          <div class="actions">
+            <button id="cmpRightOpen" type="button">Open file</button>
+            <input type="file" id="cmpRightFile" accept=".json,.txt,application/json,text/plain" hidden>
+            <button id="cmpRightClear" type="button">Clear</button>
+          </div>
+        </div>
+        <textarea id="cmpRight" class="cmp-input" spellcheck="false" wrap="off" placeholder="Paste the modified JSON…"></textarea>
+        <div class="panel-foot" id="cmpRightStatus"></div>
+        <div class="drop-overlay">Drop the file to load it</div>
+      </section>
+      <section class="panel cmp-result" id="cmpResultPanel">
+        <div class="panel-head">
+          <div class="seg small" id="cmpModeSeg" role="group" aria-label="Result view">
+            <button type="button" data-mode="changes" class="active">Changes</button>
+            <button type="button" data-mode="side">Side by side</button>
+          </div>
+          <div class="cmp-summary" id="cmpSummary"></div>
+          <div class="actions">
+            <label class="check" id="cmpSideOpts" hidden><input type="checkbox" id="cmpOnlyDiff" checked> Only changed lines</label>
+            <button id="cmpFsBtn" type="button">Full screen</button>
+          </div>
+        </div>
+        <div class="cmp-body">
+          <div class="cmp-changes" id="cmpChanges"></div>
+          <div class="cmp-side" id="cmpSide" hidden></div>
+        </div>
+        <div class="panel-foot" id="cmpStatus"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ Markdown to PDF ============ -->
+  <div class="app-view" id="mdView" hidden>
+    <div class="toolbar">
+      <label class="field">Page
+        <select id="mdPage">
+          <option value="A4">A4</option>
+          <option value="Letter">Letter</option>
+          <option value="Legal">Legal</option>
+          <option value="A5">A5</option>
+        </select>
+      </label>
+      <label class="field">Orientation
+        <select id="mdOrient">
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+      </label>
+      <label class="field">Margins
+        <select id="mdMargin">
+          <option value="18mm">Normal</option>
+          <option value="10mm">Narrow</option>
+          <option value="25mm">Wide</option>
+        </select>
+      </label>
+      <label class="field">Size
+        <select id="mdSize">
+          <option value="10">10 pt</option>
+          <option value="11" selected>11 pt</option>
+          <option value="12">12 pt</option>
+          <option value="13">13 pt</option>
+        </select>
+      </label>
+      <label class="field">Spacing
+        <select id="mdSpacing">
+          <option value="compact">Compact</option>
+          <option value="normal" selected>Normal</option>
+          <option value="relaxed">Relaxed</option>
+        </select>
+      </label>
+      <label class="field">Theme
+        <select id="mdTheme">
+          <option value="github">Clean</option>
+          <option value="accent">Accent</option>
+          <option value="minimal">Minimal</option>
+        </select>
+      </label>
+      <label class="field" title="Accent colour: cover page, links and the Accent theme">Colour
+        <input type="color" id="mdAccent" value="#2563eb">
+      </label>
+      <label class="check"><input type="checkbox" id="mdPageNums" checked> Page numbers</label>
+      <button id="mdMoreBtn" type="button" aria-expanded="false" aria-controls="mdMore">Cover &amp; header</button>
+      <span class="hint">Ctrl+S PDF · Ctrl+Shift+S save .md · Ctrl+B / I / K</span>
+    </div>
+    <div class="toolbar md-more" id="mdMore" hidden>
+      <label class="check"><input type="checkbox" id="mdCover"> Cover page</label>
+      <input type="text" id="mdCoverTitle" placeholder="Title (default: first heading)" spellcheck="false">
+      <input type="text" id="mdCoverSubtitle" placeholder="Subtitle" spellcheck="false">
+      <input type="text" id="mdCoverAuthor" placeholder="Author / team" spellcheck="false">
+      <input type="text" id="mdCoverDate" placeholder="Date (default: today)" spellcheck="false">
+      <span class="sep" aria-hidden="true"></span>
+      <input type="text" id="mdHeaderText" placeholder="Header text, e.g. {title}" spellcheck="false">
+      <input type="text" id="mdFooterText" placeholder="Footer text, e.g. Confidential · {date}" spellcheck="false">
+      <span class="hint">Placeholders: {title} {date} {page} {pages}</span>
+    </div>
+
+    <main class="workspace">
+      <section class="panel" id="mdInputPanel">
+        <div class="panel-head">
+          <h2>Markdown</h2>
+          <div class="actions">
+            <button id="mdOpenBtn" type="button">Open file</button>
+            <input type="file" id="mdFileInput" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+            <button id="mdSampleBtn" type="button">Sample</button>
+            <button id="mdSaveMdBtn" type="button" title="Save the Markdown as a .md file (Ctrl+Shift+S)">Save .md</button>
+            <button id="mdClearBtn" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="md-toolbar" id="mdToolbar" role="toolbar" aria-label="Formatting">
+          <button type="button" data-cmd="heading" title="Heading (cycles H1, H2, H3)"><b>H</b></button>
+          <button type="button" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button type="button" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+          <button type="button" data-cmd="strike" title="Strikethrough"><s>S</s></button>
+          <button type="button" data-cmd="code" title="Inline code">&lt;/&gt;</button>
+          <span class="tb-sep" aria-hidden="true"></span>
+          <button type="button" data-cmd="link" title="Link (Ctrl+K)">Link</button>
+          <button type="button" data-cmd="image" title="Image">Image</button>
+          <button type="button" data-cmd="quote" title="Quote">Quote</button>
+          <span class="tb-sep" aria-hidden="true"></span>
+          <button type="button" data-cmd="ul" title="Bulleted list">• List</button>
+          <button type="button" data-cmd="ol" title="Numbered list">1. List</button>
+          <button type="button" data-cmd="task" title="Checklist">☐ Task</button>
+          <span class="tb-sep" aria-hidden="true"></span>
+          <button type="button" data-cmd="table" title="Table">Table</button>
+          <button type="button" data-cmd="codeblock" title="Code block">Code block</button>
+          <button type="button" data-cmd="mermaid" title="Mermaid diagram">Diagram</button>
+          <button type="button" data-cmd="hr" title="Horizontal line">―</button>
+          <button type="button" data-cmd="toc" title="Table of contents">TOC</button>
+          <button type="button" data-cmd="pagebreak" title="Page break">Page break</button>
+        </div>
+        <textarea id="mdInput" class="md-input" spellcheck="true"
+          placeholder="Paste or write Markdown here, or drop a .md file…"></textarea>
+        <div class="panel-foot" id="mdInStatus">Ln 1, Col 1</div>
+        <div class="drop-overlay">Drop the file to load it</div>
+      </section>
+
+      <section class="panel" id="mdPreviewPanel">
+        <div class="panel-head">
+          <h2>Preview</h2>
+          <div class="actions">
+            <label class="field">File name
+              <input id="mdFileName" type="text" value="document" spellcheck="false" autocomplete="off">
+            </label>
+            <button id="mdFsBtn" type="button">Full screen</button>
+            <button id="mdHtmlBtn" type="button" title="Download a standalone .html page">HTML</button>
+            <button id="mdPdfBtn" type="button" class="primary">Download PDF</button>
+          </div>
+        </div>
+        <iframe id="mdFrame" class="md-frame" title="PDF preview"></iframe>
+        <div class="panel-foot" id="mdStatus"></div>
+        <div class="panel-foot tip">Download PDF builds the file directly in this page and saves it; no print dialog, works offline.</div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="vendor/pdfmake.min.js"></script>
+  <script src="vendor/vfs_fonts.js"></script>
+  <script src="vendor/roboto-mono.js"></script>
+  <script src="vendor/html-to-pdfmake.js"></script>
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="json-tools.js"></script>
+  <script src="app.js"></script>
+  <script src="compare.js"></script>
+  <script src="md-highlight.js"></script>
+  <script src="md.js"></script>
+  <script src="md-app.js"></script>
+  <script src="md-editor.js"></script>
+  <script src="nav.js"></script>
+</body>
+</html>
